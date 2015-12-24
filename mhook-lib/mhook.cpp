@@ -183,7 +183,7 @@ static VOID ListRemove(MHOOKS_TRAMPOLINE** pListHead, MHOOKS_TRAMPOLINE* pNode) 
 
 	if ((*pListHead) == pNode) {
 		(*pListHead) = pNode->pNextTrampoline;
-		assert((*pListHead)->pPrevTrampoline == NULL);
+		//assert((*pListHead)->pPrevTrampoline == NULL);
 	}
 
 	pNode->pPrevTrampoline = NULL;
@@ -331,8 +331,10 @@ static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE
 
 	MHOOKS_TRAMPOLINE* pRetVal = NULL;
 	PBYTE pModuleGuess = (PBYTE) RoundDown((size_t)pSystemFunction, cAllocSize);
+	
+	// find high memory region from pModuleGuess
 	int loopCount = 0;
-	for (PBYTE pbAlloc = pModuleGuess; pbLower < pbAlloc && pbAlloc < pbUpper; ++loopCount) {
+	for (PBYTE pbAlloc = pModuleGuess; pbAlloc < pbUpper; ++loopCount) {
 		// determine current state
 		MEMORY_BASIC_INFORMATION mbi;
 		ODPRINTF((L"mhooks: BlockAlloc: Looking at address %p", pbAlloc));
@@ -357,15 +359,63 @@ static MHOOKS_TRAMPOLINE* BlockAlloc(PBYTE pSystemFunction, PBYTE pbLower, PBYTE
 
 				// last entry points to the current head of the free list
 				pRetVal[trampolineCount - 1].pNextTrampoline = g_pFreeList;
+				if (NULL != g_pFreeList)
+				{
+					g_pFreeList->pPrevTrampoline = &pRetVal[trampolineCount - 1];
+				}
+				break;
+			}
+		}				
+		
+		//ptrdiff_t bytesToOffset = (cAllocSize * (loopCount + 1) * ((loopCount % 2 == 0) ? -1 : 1));
+		ptrdiff_t bytesToOffset = cAllocSize * (loopCount + 1);
+		pbAlloc = pbAlloc + bytesToOffset;
+	}
+
+	// found the valid trampline region 
+	if (NULL != pRetVal)
+		return pRetVal;
+
+	// find low memory region from pModuleGuess
+	loopCount = 0;
+	for (PBYTE pbAlloc = pModuleGuess; pbAlloc > pbLower; ++loopCount) {
+		// determine current state
+		MEMORY_BASIC_INFORMATION mbi;
+		ODPRINTF((L"mhooks: BlockAlloc: Looking at address %p", pbAlloc));
+		if (!VirtualQuery(pbAlloc, &mbi, sizeof(mbi)))
+			break;
+		// free & large enough?
+		if (mbi.State == MEM_FREE && mbi.RegionSize >= (unsigned)cAllocSize) {
+			// and then try to allocate it
+			pRetVal = (MHOOKS_TRAMPOLINE*) VirtualAlloc(pbAlloc, cAllocSize, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+			if (pRetVal) {
+				size_t trampolineCount = cAllocSize / sizeof(MHOOKS_TRAMPOLINE);
+				ODPRINTF((L"mhooks: BlockAlloc: Allocated block at %p as %d trampolines", pRetVal, trampolineCount));
+
+				pRetVal[0].pPrevTrampoline = NULL;
+				pRetVal[0].pNextTrampoline = &pRetVal[1];
+
+				// prepare them by having them point down the line at the next entry.
+				for (size_t s = 1; s < trampolineCount; ++s) {
+					pRetVal[s].pPrevTrampoline = &pRetVal[s - 1];
+					pRetVal[s].pNextTrampoline = &pRetVal[s + 1];
+				}
+
+				// last entry points to the current head of the free list
+				pRetVal[trampolineCount - 1].pNextTrampoline = g_pFreeList;
+				if (NULL != g_pFreeList)
+				{
+					g_pFreeList->pPrevTrampoline = &pRetVal[trampolineCount - 1];
+				}
 				break;
 			}
 		}
-				
+
 		// This is a spiral, should be -1, 1, -2, 2, -3, 3, etc. (* cAllocSize)
-		ptrdiff_t bytesToOffset = (cAllocSize * (loopCount + 1) * ((loopCount % 2 == 0) ? -1 : 1));
+		ptrdiff_t bytesToOffset = (cAllocSize * (loopCount + 1) * (-1));
 		pbAlloc = pbAlloc + bytesToOffset;
 	}
-	
+
 	return pRetVal;
 }
 
@@ -441,7 +491,7 @@ static MHOOKS_TRAMPOLINE* TrampolineGet(PBYTE pHookedFunction) {
 	MHOOKS_TRAMPOLINE* pCurrent = g_pHooks;
 
 	while (pCurrent) {
-		if (pCurrent->pHookFunction == pHookedFunction) {
+		if (pCurrent->codeTrampoline == pHookedFunction) {
 			return pCurrent;
 		}
 
@@ -766,6 +816,11 @@ static DWORD DisassembleAndSkip(PVOID pFunction, DWORD dwMinLen, MHOOKS_PATCHDAT
 
 //=========================================================================
 BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
+	if (*ppSystemFunction == NULL || pHookFunction == NULL)
+	{
+		return FALSE;
+	}
+
 	MHOOKS_TRAMPOLINE* pTrampoline = NULL;
 	PVOID pSystemFunction = *ppSystemFunction;
 	// ensure thread-safety
@@ -878,6 +933,11 @@ BOOL Mhook_SetHook(PVOID *ppSystemFunction, PVOID pHookFunction) {
 
 //=========================================================================
 BOOL Mhook_Unhook(PVOID *ppHookedFunction) {
+	if (*ppHookedFunction == NULL)
+	{
+		return FALSE;
+	}
+
 	ODPRINTF((L"mhooks: Mhook_Unhook: %p", *ppHookedFunction));
 	BOOL bRet = FALSE;
 	EnterCritSec();
