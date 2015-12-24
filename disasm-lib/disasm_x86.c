@@ -28,6 +28,8 @@
 #pragma warning(disable:4311 4312)
 #endif
 
+#pragma warning(disable : 4244 4127 4100)
+
 ////////////////////////////////////////////////////////////////////////
 // Internal macros
 ////////////////////////////////////////////////////////////////////////
@@ -4660,3 +4662,5 @@ INTERNAL BOOL IsValidLockPrefix(X86_INSTRUCTION *X86Instruction, U8 Opcode, U32 
 
 	return TRUE;
 }
+
+#pragma warning(default : 4244 4127 4100)

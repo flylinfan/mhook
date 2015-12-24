@@ -51,7 +51,7 @@ typedef ULONG64 U64;
 /////////////////////////////////////////////////////////////////////
 
 #define MAX_CODE_REFERENCE_COUNT 3
-
+#pragma warning(disable : 4214)
 typedef struct _CODE_BRANCH
 {
 	U64 Addresses[MAX_CODE_REFERENCE_COUNT]; // NULL if multiple to addresses
@@ -62,6 +62,7 @@ typedef struct _CODE_BRANCH
 	U8 AddressOffset: 5;
 	struct _INSTRUCTION_OPERAND *Operand; // the operand containg the address
 } CODE_BRANCH;
+#pragma warning(default : 4214)
 
 /////////////////////////////////////////////////////////////////////
 // Data references
@@ -455,6 +456,7 @@ typedef struct DECLSPEC_ALIGN(16) _U128
     U64 High;
 } U128;
 
+#pragma warning(disable : 4214)
 typedef struct _INSTRUCTION_OPERAND
 {
 	U32 Flags;
@@ -548,6 +550,7 @@ typedef struct _INSTRUCTION
 	U8 CodeBlockFirst: 1;
 	U8 CodeBlockLast : 1;
 } INSTRUCTION;
+#pragma warning(default : 4214)
 
 typedef struct _DISASSEMBLER
 {

@@ -679,6 +679,7 @@ typedef enum _X86_SEGMENT
 
 extern char *X86_Registers[];
 
+#pragma warning(disable : 4214)
 #pragma pack(push,1)
 typedef struct _MODRM
 {
@@ -810,6 +811,7 @@ typedef struct _X86_INSTRUCTION
 	S64 Displacement;
 
 } X86_INSTRUCTION;
+#pragma warning(default : 4214)
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Exported functions
